@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import hashlib
 import hmac
 import io
@@ -22,6 +23,8 @@ from urllib.request import Request, urlopen
 import numpy as np
 import pandas as pd
 import websockets
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 
 logger = logging.getLogger("btcusdt_usdm_futures")
@@ -169,6 +172,10 @@ class BinanceFuturesClient:
         self.config = config
         self.api_key = os.getenv("BINANCE_FUTURES_API_KEY", "")
         self.api_secret = os.getenv("BINANCE_FUTURES_API_SECRET", "")
+        self.auth_type = os.getenv("BINANCE_FUTURES_AUTH_TYPE", "HMAC").strip().upper()
+        self.private_key_path = os.getenv("BINANCE_FUTURES_PRIVATE_KEY_PATH", "")
+        self.private_key_passphrase = os.getenv("BINANCE_FUTURES_PRIVATE_KEY_PASSPHRASE", "")
+        self._ed25519_private_key: Optional[Ed25519PrivateKey] = None
 
     def public_get(self, path: str, params: Optional[dict[str, Any]] = None) -> Any:
         return self._request("GET", path, params=params, signed=False)
@@ -205,12 +212,10 @@ class BinanceFuturesClient:
             headers["X-MBX-APIKEY"] = self.api_key
 
         if signed:
-            if not self.api_secret:
-                raise RuntimeError("Missing BINANCE_FUTURES_API_SECRET")
             params.setdefault("recvWindow", self.config.recv_window_ms)
             params["timestamp"] = int(time.time() * 1000)
             query = urlencode(params)
-            signature = hmac.new(self.api_secret.encode("utf-8"), query.encode("utf-8"), hashlib.sha256).hexdigest()
+            signature = self.sign_payload(query)
             params["signature"] = signature
 
         body = None
@@ -232,6 +237,34 @@ class BinanceFuturesClient:
             raise RuntimeError(f"Binance HTTP {exc.code} {method} {path}: {detail}") from exc
         except URLError as exc:
             raise RuntimeError(f"Network error calling Binance {method} {path}: {exc}") from exc
+
+    def sign_payload(self, payload: str) -> str:
+        if self.auth_type == "HMAC":
+            if not self.api_secret:
+                raise RuntimeError("Missing BINANCE_FUTURES_API_SECRET for HMAC authentication")
+            return hmac.new(self.api_secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        if self.auth_type == "ED25519":
+            private_key = self.load_ed25519_private_key()
+            signature = private_key.sign(payload.encode("utf-8"))
+            return base64.b64encode(signature).decode("ascii")
+        raise RuntimeError(f"Unsupported BINANCE_FUTURES_AUTH_TYPE={self.auth_type}. Use HMAC or ED25519.")
+
+    def load_ed25519_private_key(self) -> Ed25519PrivateKey:
+        if self._ed25519_private_key is not None:
+            return self._ed25519_private_key
+        if not self.private_key_path:
+            raise RuntimeError("Missing BINANCE_FUTURES_PRIVATE_KEY_PATH for Ed25519 authentication")
+
+        path = Path(self.private_key_path).expanduser()
+        if not path.exists():
+            raise RuntimeError(f"Ed25519 private key file not found: {path}")
+
+        password = self.private_key_passphrase.encode("utf-8") if self.private_key_passphrase else None
+        key = load_pem_private_key(path.read_bytes(), password=password)
+        if not isinstance(key, Ed25519PrivateKey):
+            raise RuntimeError(f"Private key at {path} is not an Ed25519 private key")
+        self._ed25519_private_key = key
+        return key
 
     def exchange_info(self) -> dict[str, Any]:
         return self.public_get("/fapi/v1/exchangeInfo")
