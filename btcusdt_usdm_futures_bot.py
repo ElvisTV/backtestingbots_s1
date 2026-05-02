@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 import websockets
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_ssh_private_key
 
 
 logger = logging.getLogger("btcusdt_usdm_futures")
@@ -260,7 +260,11 @@ class BinanceFuturesClient:
             raise RuntimeError(f"Ed25519 private key file not found: {path}")
 
         password = self.private_key_passphrase.encode("utf-8") if self.private_key_passphrase else None
-        key = load_pem_private_key(path.read_bytes(), password=password)
+        data = path.read_bytes()
+        try:
+            key = load_pem_private_key(data, password=password)
+        except ValueError:
+            key = load_ssh_private_key(data, password=password)
         if not isinstance(key, Ed25519PrivateKey):
             raise RuntimeError(f"Private key at {path} is not an Ed25519 private key")
         self._ed25519_private_key = key

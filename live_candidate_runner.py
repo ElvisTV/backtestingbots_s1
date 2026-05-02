@@ -240,7 +240,11 @@ class LiveCandidateRunner:
             raise GuardrailViolation(f"Could not reconcile position risk: {exc}") from exc
 
         if not positions:
-            raise GuardrailViolation("No position risk returned by Binance")
+            self.state.position_amt = Decimal("0")
+            self.state.entry_price = Decimal("0")
+            self.event_logger.emit("position_reconciled", position_amt="0", entry_price="0", source="empty_position_risk")
+            self.validate_virtual_capital_limits_or_abort(mark_price=None)
+            positions = []
 
         try:
             account = self.client.account()
@@ -258,14 +262,16 @@ class LiveCandidateRunner:
             else:
                 raise GuardrailViolation(f"Could not observe account balance: {exc}") from exc
 
-        position = positions[0]
-        self.state.position_amt = Decimal(str(position.get("positionAmt", "0")))
-        self.state.entry_price = Decimal(str(position.get("entryPrice", "0")))
-        self.event_logger.emit(
-            "position_reconciled",
-            position_amt=str(self.state.position_amt),
-            entry_price=str(self.state.entry_price),
-        )
+        if positions:
+            position = positions[0]
+            self.state.position_amt = Decimal(str(position.get("positionAmt", "0")))
+            self.state.entry_price = Decimal(str(position.get("entryPrice", "0")))
+            self.event_logger.emit(
+                "position_reconciled",
+                position_amt=str(self.state.position_amt),
+                entry_price=str(self.state.entry_price),
+                source="position_risk",
+            )
 
         if self.config.require_flat_position and not self.state.is_flat:
             raise GuardrailViolation(f"Expected flat position before start, got {self.state.position_amt}")
