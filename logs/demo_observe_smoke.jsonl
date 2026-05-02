@@ -1,0 +1,4 @@
+{"dry_run": true, "event_type": "guardrails_static_passed", "leverage": 1, "margin_type": "ISOLATED", "max_notional": "25", "mode": "observe", "testnet": true, "ts": "2026-05-02T21:20:42.372647+00:00"}
+{"event_type": "reconciliation_skipped", "reason": "observe_without_api_key", "ts": "2026-05-02T21:20:42.373259+00:00"}
+{"event_type": "user_stream_skipped", "reason": "observe_without_api_key", "ts": "2026-05-02T21:20:42.373627+00:00"}
+{"event_type": "market_stream_connected", "ts": "2026-05-02T21:20:43.780880+00:00", "url": "wss://fstream.binancefuture.com/stream?streams=btcusdt@kline_1h/btcusdt@markPrice@1s"}

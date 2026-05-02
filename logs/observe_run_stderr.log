@@ -1,0 +1,4 @@
+2026-05-02 15:28:23,577 | INFO     | guardrails_static_passed | {'mode': 'observe', 'dry_run': True, 'testnet': True, 'max_notional': '25'}
+2026-05-02 15:28:23,579 | INFO     | reconciliation_skipped | {'reason': 'observe_without_api_key'}
+2026-05-02 15:28:23,580 | INFO     | user_stream_skipped | {'reason': 'observe_without_api_key'}
+2026-05-02 15:28:24,840 | INFO     | market_stream_connected | {'url': 'wss://fstream.binance.com/market/stream?streams=btcusdt@kline_1h/btcusdt@markPrice@1s'}

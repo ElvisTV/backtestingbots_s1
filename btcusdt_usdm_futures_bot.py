@@ -47,10 +47,18 @@ class RuntimeConfig:
     @property
     def market_ws_url(self) -> str:
         symbol = self.symbol.lower()
+        if self.testnet:
+            return f"wss://fstream.binancefuture.com/stream?streams={symbol}@kline_{self.interval}/{symbol}@markPrice@1s"
         return (
             "wss://fstream.binance.com/market/stream?"
             f"streams={symbol}@kline_{self.interval}/{symbol}@markPrice@1s"
         )
+
+    @property
+    def user_ws_base_url(self) -> str:
+        if self.testnet:
+            return "wss://fstream.binancefuture.com/ws"
+        return "wss://fstream.binance.com/private/ws"
 
 
 @dataclass(frozen=True)
@@ -177,6 +185,9 @@ class BinanceFuturesClient:
     def user_stream_put(self, path: str, params: dict[str, Any]) -> Any:
         return self._request("PUT", path, params=params, signed=False, api_key_required=True)
 
+    def user_stream_delete(self, path: str, params: dict[str, Any]) -> Any:
+        return self._request("DELETE", path, params=params, signed=False, api_key_required=True)
+
     def _request(
         self,
         method: str,
@@ -237,6 +248,12 @@ class BinanceFuturesClient:
     def change_leverage(self, symbol: str, leverage: int) -> dict[str, Any]:
         return self.signed_post("/fapi/v1/leverage", {"symbol": symbol, "leverage": leverage})
 
+    def change_margin_type(self, symbol: str, margin_type: str) -> dict[str, Any]:
+        return self.signed_post("/fapi/v1/marginType", {"symbol": symbol, "marginType": margin_type})
+
+    def open_orders(self, symbol: str) -> list[dict[str, Any]]:
+        return self.signed_get("/fapi/v1/openOrders", {"symbol": symbol})
+
     def test_order(self, params: dict[str, Any]) -> Any:
         return self.signed_post("/fapi/v1/order/test", params)
 
@@ -251,6 +268,9 @@ class BinanceFuturesClient:
 
     def keepalive_listen_key(self, listen_key: str) -> Any:
         return self.user_stream_put("/fapi/v1/listenKey", {"listenKey": listen_key})
+
+    def close_listen_key(self, listen_key: str) -> Any:
+        return self.user_stream_delete("/fapi/v1/listenKey", {"listenKey": listen_key})
 
 
 def extract_symbol_filters(exchange_info: dict[str, Any], symbol: str) -> SymbolFilters:
@@ -959,7 +979,8 @@ def run_test_order_mode(args: argparse.Namespace) -> None:
     qty = quantize_down(notional / mark, filters.step_size)
     if qty < filters.min_qty or qty * mark < filters.min_notional:
         raise SystemExit(f"Quantity too small after filters: qty={qty}, notional={qty * mark}")
-    response = client.test_order(build_market_order_params(args.symbol, 1, qty))
+    side = -1 if args.side.upper() == "SELL" else 1
+    response = client.test_order(build_market_order_params(args.symbol, side, qty))
     print("Test order accepted by Binance Futures API.")
     print(response)
 
@@ -996,6 +1017,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     test_order.add_argument("--interval", default="1h")
     test_order.add_argument("--testnet", action="store_true", default=True)
     test_order.add_argument("--test-order-notional", type=float, default=25.0)
+    test_order.add_argument("--side", choices=["BUY", "SELL"], default="SELL")
 
     return parser
 
