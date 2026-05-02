@@ -76,6 +76,7 @@ class StrategyConfig:
     short_rsi_min: float = 28.0
     short_rsi_max: float = 48.0
     cooldown_bars: int = 6
+    allow_long: bool = True
     allow_short: bool = True
 
 
@@ -507,7 +508,8 @@ def add_signals(df: pd.DataFrame, config: StrategyConfig) -> pd.DataFrame:
     )
 
     out["raw_signal"] = 0
-    out.loc[long_setup, "raw_signal"] = 1
+    if config.allow_long:
+        out.loc[long_setup, "raw_signal"] = 1
     if config.allow_short:
         out.loc[short_setup, "raw_signal"] = -1
     out["entry_signal"] = out["raw_signal"].shift(1).fillna(0).astype(int)
@@ -927,7 +929,7 @@ def run_backtest_mode(args: argparse.Namespace) -> None:
     data = load_ohlcv_csv(kline_path, args.symbol)
     funding = load_funding_csv(funding_path)
     config = BacktestConfig(
-        strategy=StrategyConfig(allow_short=not args.long_only),
+        strategy=StrategyConfig(allow_long=not args.short_only, allow_short=not args.long_only),
         risk=FuturesRiskConfig(
             initial_equity=args.initial_equity,
             leverage=args.leverage,
@@ -981,6 +983,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--risk-per-trade", type=float, default=0.005)
     backtest.add_argument("--max-notional-fraction", type=float, default=0.75)
     backtest.add_argument("--long-only", action="store_true")
+    backtest.add_argument("--short-only", action="store_true")
     backtest.add_argument("--testnet", action="store_true")
 
     paper = sub.add_parser("paper-stream")
