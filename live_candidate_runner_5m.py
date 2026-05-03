@@ -29,6 +29,10 @@ base.BOOTSTRAP_CANDLE_LIMIT = BOOTSTRAP_CANDLE_LIMIT
 logger = logging.getLogger("live_candidate_5m")
 
 
+class SessionComplete(Exception):
+    pass
+
+
 def evaluate_5m_short_signal(candles: list[dict[str, Any]]) -> int:
     """Evaluate the current best 5m research baseline: short-only.
 
@@ -55,6 +59,49 @@ def evaluate_5m_short_signal(candles: list[dict[str, Any]]) -> int:
 
 
 class LiveCandidateRunner5m(base.LiveCandidateRunner):
+    max_runtime_seconds: int = 0
+    max_closed_candles: int = 0
+    closed_candles_processed: int = 0
+
+    async def run(self) -> None:
+        self.validate_static_guardrails()
+        self.private_api_preflight_or_abort()
+        await self.reconcile_or_abort()
+        self.prepare_account_settings_or_abort()
+        self.bootstrap_historical_candles()
+
+        if self.config.mode == "test-order":
+            self.submit_test_order_or_abort()
+            return
+
+        await self.start_user_data_stream()
+        tasks = [
+            asyncio.create_task(self.market_data_loop()),
+            asyncio.create_task(self.user_data_loop()),
+            asyncio.create_task(self.listen_key_keepalive_loop()),
+            asyncio.create_task(self.stream_health_loop()),
+        ]
+        if self.max_runtime_seconds > 0:
+            tasks.append(asyncio.create_task(self.runtime_limit_loop()))
+        try:
+            await asyncio.gather(*tasks)
+        except SessionComplete as exc:
+            self.event_logger.emit(
+                "session_complete_exit",
+                reason=str(exc),
+                closed_candles_processed=self.closed_candles_processed,
+                max_closed_candles=self.max_closed_candles,
+                max_runtime_seconds=self.max_runtime_seconds,
+            )
+        finally:
+            for task in tasks:
+                task.cancel()
+            await self.close_listen_key()
+
+    async def runtime_limit_loop(self) -> None:
+        await asyncio.sleep(self.max_runtime_seconds)
+        raise SessionComplete("max_runtime_seconds_reached")
+
     def validate_static_guardrails(self) -> None:
         if self.runtime.symbol != SYMBOL or self.runtime.interval != INTERVAL:
             raise base.GuardrailViolation("Runner is hard-restricted to BTCUSDT 5m")
@@ -168,6 +215,7 @@ class LiveCandidateRunner5m(base.LiveCandidateRunner):
                         candle = base.parse_kline_stream(data)
                         if candle is None or not candle["is_closed"]:
                             continue
+                        self.closed_candles_processed += 1
                         self.candles.append(candle)
                         self.candles = self.candles[-BOOTSTRAP_CANDLE_LIMIT:]
                         signal = evaluate_5m_short_signal(self.candles)
@@ -182,7 +230,11 @@ class LiveCandidateRunner5m(base.LiveCandidateRunner):
                             timeframe=INTERVAL,
                         )
                         await self.handle_signal(signal, str(candle.get("timestamp")))
+                        if self.max_closed_candles > 0 and self.closed_candles_processed >= self.max_closed_candles:
+                            raise SessionComplete("max_closed_candles_reached")
             except asyncio.CancelledError:
+                raise
+            except SessionComplete:
                 raise
             except Exception as exc:
                 self.event_logger.emit("market_stream_error", error=str(exc))
@@ -221,6 +273,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--leverage", type=int, default=None)
     parser.add_argument("--margin-type", default=None, choices=["ISOLATED", "CROSSED", "isolated", "crossed"])
     parser.add_argument("--log-file", type=Path, default=Path("logs/live_candidate_5m_events.jsonl"))
+    parser.add_argument("--max-runtime-seconds", type=int, default=0, help="Stop cleanly after this many seconds. 0 means no limit.")
+    parser.add_argument("--max-closed-candles", type=int, default=0, help="Stop cleanly after this many closed 5m candles. 0 means no limit.")
     return parser
 
 
@@ -257,6 +311,8 @@ def main() -> None:
         log_file=args.log_file,
     )
     runner = LiveCandidateRunner5m(config)
+    runner.max_runtime_seconds = max(args.max_runtime_seconds, 0)
+    runner.max_closed_candles = max(args.max_closed_candles, 0)
     try:
         asyncio.run(runner.run())
     except base.GuardrailViolation as exc:
