@@ -6,3 +6,5 @@ __pycache__/
 data_usdm_1m_research/
 usdm_1m_research_output/
 usdm_1m_hypothesis_lab_output/
+data_usdm_full_history/
+usdm_1m_full_history_output/
