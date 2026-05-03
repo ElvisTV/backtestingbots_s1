@@ -31,6 +31,7 @@ INTERVAL = "1h"
 REQUIRED_SIGNAL = -1
 USER_STREAM_KEEPALIVE_SECONDS = 30 * 60
 USER_STREAM_STALE_SECONDS = 90
+BOOTSTRAP_CANDLE_LIMIT = 600
 
 logger = logging.getLogger("live_candidate")
 
@@ -116,6 +117,7 @@ class LiveCandidateRunner:
         self.private_api_preflight_or_abort()
         await self.reconcile_or_abort()
         self.prepare_account_settings_or_abort()
+        self.bootstrap_historical_candles()
 
         if self.config.mode == "test-order":
             self.submit_test_order_or_abort()
@@ -338,6 +340,46 @@ class LiveCandidateRunner:
         response = self.client.test_order(params)
         self.event_logger.emit("test_order_accepted", response=response)
 
+    def bootstrap_historical_candles(self) -> None:
+        klines = self.client.public_get(
+            "/fapi/v1/klines",
+            {"symbol": SYMBOL, "interval": INTERVAL, "limit": BOOTSTRAP_CANDLE_LIMIT},
+        )
+        now = pd.Timestamp.now(tz="UTC")
+        candles: list[dict[str, Any]] = []
+        for kline in klines:
+            close_time = pd.to_datetime(int(kline[6]), unit="ms", utc=True)
+            if close_time > now:
+                continue
+            candles.append(
+                {
+                    "timestamp": close_time,
+                    "open": float(kline[1]),
+                    "high": float(kline[2]),
+                    "low": float(kline[3]),
+                    "close": float(kline[4]),
+                    "volume": float(kline[5]),
+                    "is_closed": True,
+                }
+            )
+        self.candles = candles[-BOOTSTRAP_CANDLE_LIMIT:]
+        signal = evaluate_latest_signal(self.candles, SYMBOL, self.strategy) if self.candles else 0
+        latest = self.candles[-1] if self.candles else None
+        self.event_logger.emit(
+            "historical_candles_bootstrapped",
+            candles=len(self.candles),
+            latest_candle_time=str(latest["timestamp"]) if latest else None,
+            latest_close=str(latest["close"]) if latest else None,
+        )
+        self.event_logger.emit(
+            "bootstrap_signal_evaluated",
+            signal=signal,
+            candles=len(self.candles),
+            candle_time=str(latest["timestamp"]) if latest else None,
+            traded=False,
+            reason="startup_signal_is_context_only_waiting_for_next_closed_stream_candle",
+        )
+
     async def start_user_data_stream(self) -> None:
         if self.config.mode == "observe" and not self.state.private_api_available:
             self.event_logger.emit("user_stream_skipped", reason=self.state.private_api_error or "private_api_unavailable")
@@ -437,6 +479,8 @@ class LiveCandidateRunner:
         while True:
             await asyncio.sleep(15)
             if self.config.mode == "observe" and not self.state.listen_key:
+                continue
+            if self.state.user_stream_connected:
                 continue
             if not self.state.last_user_event_at:
                 continue
