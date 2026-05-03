@@ -1,0 +1,36 @@
+{
+  "strategy": {
+    "range_lookback": 72,
+    "volume_sma": 288,
+    "atr_period": 14,
+    "rsi_period": 14,
+    "adx_period": 14,
+    "ema_bias": 200,
+    "min_atr_pct": 0.00025,
+    "max_atr_pct": 0.012,
+    "min_volume_ratio": 1.2,
+    "max_volume_ratio": 8.0,
+    "max_adx": 34.0,
+    "min_sweep_atr": 0.12,
+    "min_reclaim_atr": 0.04,
+    "max_close_distance_ema_atr": 4.0,
+    "long_rsi_min": 28.0,
+    "long_rsi_max": 52.0,
+    "short_rsi_min": 48.0,
+    "short_rsi_max": 72.0
+  },
+  "risk": {
+    "initial_equity": 2000.0,
+    "leverage": 2,
+    "risk_per_trade": 0.0015,
+    "max_margin_fraction": 0.2,
+    "taker_fee_rate": 0.0004,
+    "slippage_rate": 0.00025,
+    "stop_atr_multiple": 1.1,
+    "take_profit_atr_multiple": 1.55,
+    "trailing_atr_multiple": 0.95,
+    "breakeven_after_atr": 0.8,
+    "max_bars_in_trade": 24,
+    "cooldown_bars": 18
+  }
+}
