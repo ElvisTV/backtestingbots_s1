@@ -3,3 +3,6 @@ keys/*.pem
 keys/*.key
 logs/*.jsonl
 __pycache__/
+data_usdm_1m_research/
+usdm_1m_research_output/
+usdm_1m_hypothesis_lab_output/
