@@ -1,0 +1,25 @@
+[
+  {
+    "symbol": "BTCUSDT",
+    "interval": "5m",
+    "version": "v2_context_pullback",
+    "start": "2025-05-01 00:00:00+00:00",
+    "end": "2026-04-30 23:55:00+00:00",
+    "rows": 105120,
+    "final_equity": 985.1303990394899,
+    "total_return_pct": -1.4869600960510043,
+    "max_drawdown_pct": 1.8337454247551954,
+    "return_over_drawdown": -0.8108868744686919,
+    "trade_count": 44,
+    "win_rate_pct": 43.18181818181818,
+    "profit_factor": 0.7531021939248488,
+    "expectancy": -0.17028697784695926,
+    "avg_win": 1.2028658506399141,
+    "avg_loss": -1.213883127496983,
+    "win_loss_ratio": 0.9909239393748009,
+    "sharpe_simplified": -1.473145228958131,
+    "exposure_time_pct": 0.24638508371385084,
+    "avg_trade_duration_bars": 5.886363636363637,
+    "total_fees": 14.763947169275234
+  }
+]
